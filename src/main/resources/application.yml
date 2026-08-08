@@ -1,5 +1,5 @@
 server:
-  port: 8096
+  port: ${PORT:8096}
 
 spring:
   application:
@@ -10,11 +10,6 @@ eureka:
     enabled: false
     register-with-eureka: false
     fetch-registry: false
-  instance:
-    prefer-ip-address: false
-    hostname: localhost
-    lease-renewal-interval-in-seconds: 5
-    lease-expiration-duration-in-seconds: 10
 
 logging:
   level:
