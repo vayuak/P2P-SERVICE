@@ -14,7 +14,7 @@ eureka:
 logging:
   level:
     root: INFO
-    org.springframework.web.socket: DEBUG # Live-tracks connection/disconnection handshakes
+    org.springframework.web.socket: DEBUG # Live-tracks connection/disconnection handshakes.
     com.SHADOW.P2P_SERVICE: INFO
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} : %msg%n"
