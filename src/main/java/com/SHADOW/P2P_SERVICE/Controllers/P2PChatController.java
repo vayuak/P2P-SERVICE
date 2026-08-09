@@ -24,7 +24,7 @@ public class P2PChatController {
                 payload.getRoomId(), payload.getSenderId());
 
         // Directly route to the active STOMP subscriber. NO DATABASE SAVING.
-        String destination = "/queue/shadow-" + payload.getRoomId();
+        String destination = "/topic/shadow-" + payload.getRoomId();
         messagingTemplate.convertAndSend(destination, payload);
     }
 
