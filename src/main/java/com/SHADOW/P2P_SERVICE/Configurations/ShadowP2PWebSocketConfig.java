@@ -1,14 +1,14 @@
 package com.SHADOW.P2P_SERVICE.Configurations;
 
+// 🟢 FIX: Imported the Rate Limiter from the Config package!
+import com.SHADOW.P2P_SERVICE.Configurations.WebSocketSecurityConfig;
+
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.server.ServerHttpRequest;
-import org.springframework.http.server.ServerHttpResponse;
-import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.config.ChannelRegistration;
@@ -17,15 +17,11 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
-import org.springframework.web.socket.WebSocketHandler;
 import org.springframework.web.socket.config.annotation.*;
-import org.springframework.web.socket.server.HandshakeInterceptor;
 
-import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 
 @Configuration
 @EnableWebSocketMessageBroker
@@ -35,35 +31,14 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
     @Value("${ghost.shield.jwt-secret:SuperSecurePermanentSecretKeyThatIsAtLeast64BytesLongForSecurityGuarantees}")
     private String jwtSecret;
 
-    @Value("${GATEWAY_SECRET:CryptographicGhostShieldInternalTokenSignature7350_465}")
-    private String gatewaySecret;
+    // Inject your custom Rate Limiter
+    @Autowired
+    private WebSocketSecurityConfig rateLimiter;
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         registry.addEndpoint("/ws-chat")
-                .setAllowedOriginPatterns("*")
-                .addInterceptors(new HandshakeInterceptor() {
-                    @Override
-                    public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
-                                                   WebSocketHandler wsHandler, Map<String, Object> attributes) {
-
-                        if (request instanceof ServletServerHttpRequest) {
-                            HttpServletRequest servletRequest = ((ServletServerHttpRequest) request).getServletRequest();
-                            String incomingSecret = servletRequest.getHeader("X-Gateway-Secret");
-
-                            if (incomingSecret == null || !incomingSecret.equals(gatewaySecret)) {
-                                log.warn("🚨 SECURITY BREACH ATTEMPT: WebSocket connection rejected. Invalid Gateway Secret.");
-                                response.setStatusCode(HttpStatus.FORBIDDEN);
-                                return false;
-                            }
-                        }
-                        return true;
-                    }
-
-                    @Override
-                    public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response,
-                                               WebSocketHandler wsHandler, Exception exception) {}
-                });
+                .setAllowedOriginPatterns("*");
     }
 
     @Override
@@ -74,7 +49,6 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
 
     @Override
     public void configureClientInboundChannel(ChannelRegistration registration) {
-        // 🟢 FIXED: Using 'registration' instead of 'registry'
         registration.interceptors(new ChannelInterceptor() {
             @Override
             public Message<?> preSend(Message<?> message, MessageChannel channel) {
@@ -84,7 +58,7 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                     List<String> authHeaders = accessor.getNativeHeader("Authorization");
 
                     if (authHeaders == null || authHeaders.isEmpty() || !authHeaders.get(0).startsWith("Bearer ")) {
-                        log.error("🚨 STOMP Connection Dropped: Missing or malformed Authorization header.");
+                        log.error("STOMP Connection Dropped: Missing or malformed Authorization header.");
                         throw new IllegalArgumentException("Unauthorized connection attempt");
                     }
 
@@ -98,13 +72,17 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                                 .getPayload();
 
                         log.info("✅ Secure STOMP session established for user: {}", claims.getSubject());
+
+                        // Inject the username into the session so the OfflineMailboxFlusher can read it later!
+                        accessor.setUser(() -> claims.getSubject());
+
                     } catch (Exception e) {
-                        log.error("🚨 STOMP Connection Dropped: Invalid JWT Signature.");
+                        log.error("STOMP Connection Dropped: Invalid JWT Signature.");
                         throw new IllegalArgumentException("Invalid Token");
                     }
                 }
                 return message;
             }
-        });
+        }, rateLimiter); // 🟢 Rate limiter added safely here!
     }
 }
