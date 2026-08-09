@@ -68,6 +68,7 @@ public class P2PChatController {
     public static class FortressPayload {
         private String roomId;
         private Long senderId;
+        private String msgId;
         private String senderUsername;
         // 🔒 Cryptographic Elements (Server is blind to this)
         private String ephemeralPublicKey; // For Perfect Forward Secrecy (ECDH)

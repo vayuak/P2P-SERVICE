@@ -15,9 +15,8 @@ import java.util.List;
 @Repository
 public interface OfflineMessageRepository extends JpaRepository<OfflineMessage, Long> {
 
-    // Fetch all pending messages for a user in chronological order
-    List<OfflineMessage> findByRecipientUsernameOrderByTimestampAsc(String recipientUsername);
-
+   // 🟢 Add this to your OfflineMessageRepository!
+    List<OfflineMessage> findByRecipientUsernameAndRoomIdOrderByTimestampAsc(String recipientUsername, String roomId);
     // Clear the mailbox after successful delivery
     @Transactional
     void deleteByRecipientUsername(String recipientUsername);

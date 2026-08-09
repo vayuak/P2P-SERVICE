@@ -1,6 +1,5 @@
-package com.SHADOW.P2P_SERVICE.Listeners;
+package com.SHADOW.P2P_SERVICE.Controllers;
 
-import com.SHADOW.P2P_SERVICE.Controllers.P2PChatController;
 import com.SHADOW.P2P_SERVICE.Models.OfflineMessage;
 import com.SHADOW.P2P_SERVICE.Repositories.OfflineMessageRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,9 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.socket.messaging.SessionSubscribeEvent;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -22,6 +19,7 @@ public class WebSocketMailboxFlusher {
 
     private final OfflineMessageRepository offlineMessageRepository;
     private final SimpMessagingTemplate messagingTemplate;
+
     @EventListener
     public void handleSessionSubscribeEvent(SessionSubscribeEvent event) {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
@@ -32,22 +30,32 @@ public class WebSocketMailboxFlusher {
 
         // Trigger when they subscribe to a specific chat room
         if (destination.startsWith("/topic/shadow-")) {
-            List<OfflineMessage> pendingMessages = offlineMessageRepository.findByRecipientUsernameOrderByTimestampAsc(username);
+            // 🟢 FIX: Extract the roomId from the destination!
+            String roomId = destination.replace("/topic/shadow-", "");
+
+            // 🟢 FIX: Only fetch messages for this specific room
+            List<OfflineMessage> pendingMessages = offlineMessageRepository
+                    .findByRecipientUsernameAndRoomIdOrderByTimestampAsc(username, roomId);
 
             if (!pendingMessages.isEmpty()) {
                 for (OfflineMessage msg : pendingMessages) {
-                    // Re-build the payload exactly how the frontend expects it
+                    // Re-build the payload
                     P2PChatController.FortressPayload payload = new P2PChatController.FortressPayload();
+                    payload.setMsgId("offline_" + msg.getId()); // 🟢 Important for frontend deduping
                     payload.setRoomId(msg.getRoomId());
+                    payload.setSenderUsername(msg.getSenderUsername()); // 🟢 FIX: Added sender
                     payload.setCiphertext(msg.getCiphertext());
                     payload.setIv(msg.getIv());
                     payload.setAuthTag(msg.getAuthTag());
-                    // ... set other fields
+                    payload.setEphemeralPublicKey(msg.getEphemeralPublicKey());
 
                     // Blast it directly into the room they just joined
                     messagingTemplate.convertAndSend(destination, payload);
                 }
-                offlineMessageRepository.deleteByRecipientUsername(username);
+
+                // 🟢 FIX: Only delete the messages we just delivered!
+                offlineMessageRepository.deleteAll(pendingMessages);
+                log.info("Flushed {} offline messages for {} in room {}", pendingMessages.size(), username, roomId);
             }
         }
     }
