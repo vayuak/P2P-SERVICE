@@ -5,16 +5,46 @@ spring:
   application:
     name: P2P-SERVICE
 
+  # ========================================================
+  # 🐘 LIVE PERSISTENT STORAGE: POSTGRESQL LAYER (NEW FOR P2P)
+  # ========================================================
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    driver-class-name: org.postgresql.Driver
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+# ========================================================
+# 🛡️ SECURITY TOKENS (PREVENTS WEBSOCKET CRASHES)
+# ========================================================
+ghost:
+  shield:
+    jwt-secret: ${JWT_SECRET:SuperSecurePermanentSecretKeyThatIsAtLeast64BytesLongForSecurityGuarantees}
+
+GATEWAY_SECRET: ${GATEWAY_SECRET:CryptographicGhostShieldInternalTokenSignature7350_465}
+
+# ========================================================
+# 🗺️ SERVICE REGISTRY (DISABLED)
+# ========================================================
 eureka:
   client:
     enabled: false
     register-with-eureka: false
     fetch-registry: false
 
+# ========================================================
+# 📝 LOGGING CONFIGURATION
+# ========================================================
 logging:
   level:
     root: INFO
     org.springframework.web.socket: DEBUG # Live-tracks connection/disconnection handshakes.
-    com.SHADOW.P2P_SERVICE: INFO
+    com.SHADOW.P2P_SERVICE: INFO # Change to DEBUG temporarily if you want to see SQL queries!
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} : %msg%n"
