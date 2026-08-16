@@ -19,7 +19,7 @@ import org.springframework.stereotype.Controller;
 public class P2PChatController {
 
     private final SimpMessagingTemplate messagingTemplate;
-    private final SimpUserRegistry userRegistry; // Tracks who is currently connected
+    private final SimpUserRegistry userRegistry;
     private final OfflineMessageRepository offlineRepo;
 
     @MessageMapping("/shadow/send")
@@ -28,25 +28,26 @@ public class P2PChatController {
 
         String destination = "/topic/shadow-" + payload.getRoomId().toLowerCase().trim();
 
-        // 1. Figure out who the message is meant for based on the roomId (e.g., "adi_mark")
         String senderUsername = payload.getSenderUsername();
         String targetUsername = extractTargetUsername(payload.getRoomId(), senderUsername);
 
-        // 2. Check if the target user is currently connected to the WebSocket
         boolean isTargetOnline = userRegistry.getUser(targetUsername) != null;
 
         if (isTargetOnline) {
-            // 🟢 Target is online. Broadcast instantly!
             messagingTemplate.convertAndSend(destination, payload);
         } else {
-            // 🔴 Target is offline. Store in the 70-hour database!
             log.info("💤 User {} is offline. Saving to encrypted mailbox.", targetUsername);
 
             OfflineMessage offlineMsg = new OfflineMessage();
             offlineMsg.setSenderUsername(senderUsername);
             offlineMsg.setRecipientUsername(targetUsername);
             offlineMsg.setRoomId(payload.getRoomId());
+
+            // 🟢 THE FIX: We must assign the text to BOTH fields just in case,
+            // but specifically 'EncryptedPayload' to satisfy your PostgreSQL NOT NULL constraint!
             offlineMsg.setCiphertext(payload.getCiphertext());
+            offlineMsg.setEncryptedPayload(payload.getCiphertext());
+
             offlineMsg.setIv(payload.getIv());
             offlineMsg.setAuthTag(payload.getAuthTag());
             offlineMsg.setEphemeralPublicKey(payload.getEphemeralPublicKey());
@@ -55,13 +56,13 @@ public class P2PChatController {
         }
     }
 
-    // Helper to extract the other person's name from "adi_mark"
     private String extractTargetUsername(String roomId, String sender) {
         String[] parts = roomId.split("_");
         if (parts[0].equals(sender)) return parts[1];
         if (parts.length > 1 && parts[1].equals(sender)) return parts[0];
         return "UNKNOWN";
     }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -70,11 +71,9 @@ public class P2PChatController {
         private Long senderId;
         private String msgId;
         private String senderUsername;
-        // 🔒 Cryptographic Elements (Server is blind to this)
-        private String ephemeralPublicKey; // For Perfect Forward Secrecy (ECDH)
-        private String ciphertext;         // The AES-GCM encrypted message + sequence + mediaUrl
-        private String iv;                 // Initialization Vector
-        private String authTag;            // AEAD Integrity verification tag
+        private String ephemeralPublicKey;
+        private String ciphertext;
+        private String iv;
+        private String authTag;
     }
-
 }
