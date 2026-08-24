@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -14,6 +15,7 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
 import org.springframework.web.socket.config.annotation.*;
+import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
 import lombok.extern.slf4j.Slf4j;
 import java.nio.charset.StandardCharsets;
@@ -25,25 +27,11 @@ import java.util.List;
 @Slf4j
 public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-    /**
-     * SECURITY: no default value.
-     *
-     * The previous version fell back to a hardcoded key that is committed to a
-     * public repository. If JWT_SECRET was ever unset, the service silently
-     * accepted tokens signed with a publicly known secret, letting anyone forge
-     * a session as any user. Now the application refuses to start instead.
-     *
-     * Rotate this secret. The old one must be treated as compromised.
-     */
     @Value("${ghost.shield.jwt-secret}")
     private String jwtSecret;
 
-    // The connection limiter is now an event listener, not a channel
-    // interceptor, so it is no longer registered here.
-
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // TODO: replace "*" with your actual app origins before any web build.
         registry.addEndpoint("/ws-chat")
                 .setAllowedOriginPatterns("*");
     }
@@ -52,7 +40,6 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
     public void configureMessageBroker(MessageBrokerRegistry registry) {
         registry.enableSimpleBroker("/queue", "/topic");
         registry.setApplicationDestinationPrefixes("/app");
-        // Required for convertAndSendToUser and /user/** destinations.
         registry.setUserDestinationPrefix("/user");
     }
 
@@ -84,8 +71,6 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                         final String username = claims.getSubject().trim().toLowerCase();
                         log.info("Secure STOMP session established for user: {}", username);
 
-                        // Serializable principal so it survives into the
-                        // session-connected / disconnect events.
                         accessor.setUser(new StompPrincipal(username));
 
                     } catch (Exception e) {
@@ -94,10 +79,6 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                     }
                 }
 
-                // SUBSCRIBE authorization: a user may only subscribe to a room
-                // they are a participant in. Without this, any authenticated
-                // user could subscribe to /topic/shadow-* for any conversation
-                // and stream its ciphertext plus full metadata.
                 if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
                     Principal user = accessor.getUser();
                     String destination = accessor.getDestination();
@@ -120,12 +101,6 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
         });
     }
 
-    /**
-     * Room ids are the two participants' lowercased usernames sorted and joined
-     * with '_'. Because a username may itself contain '_', we cannot simply
-     * split. Instead we check that the room id starts with, ends with, or
-     * contains the username as a whole underscore-delimited run.
-     */
     private boolean roomContainsUser(String roomId, String username) {
         if (roomId == null || username == null || username.isEmpty()) return false;
         String room = roomId.toLowerCase();
@@ -137,17 +112,27 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
         return room.contains("_" + user + "_");
     }
 
-    /** Minimal serializable Principal. A lambda is not serializable. */
     public static class StompPrincipal implements Principal, java.io.Serializable {
         private final String name;
         public StompPrincipal(String name) { this.name = name; }
         @Override public String getName() { return name; }
     }
+
     @Override
     public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
-        // Increase buffer to 1 Megabyte (1024 * 1024 bytes) to allow Base64 image payloads
+        // Increase buffer for STOMP to 1 Megabyte
         registration.setMessageSizeLimit(1024 * 1024);
         registration.setSendBufferSizeLimit(1024 * 1024);
         registration.setSendTimeLimit(20000);
+    }
+
+    // 🟢 ADDED THIS BEAN TO FIX THE TOMCAT CRASH
+    @Bean
+    public ServletServerContainerFactoryBean createWebSocketContainer() {
+        ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
+        // Force Tomcat to accept 2 Megabyte raw WebSocket frames
+        container.setMaxTextMessageBufferSize(2 * 1024 * 1024);
+        container.setMaxBinaryMessageBufferSize(2 * 1024 * 1024);
+        return container;
     }
 }
