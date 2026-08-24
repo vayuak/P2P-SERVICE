@@ -143,4 +143,11 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
         public StompPrincipal(String name) { this.name = name; }
         @Override public String getName() { return name; }
     }
+    @Override
+    public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+        // Increase buffer to 1 Megabyte (1024 * 1024 bytes) to allow Base64 image payloads
+        registration.setMessageSizeLimit(1024 * 1024);
+        registration.setSendBufferSizeLimit(1024 * 1024);
+        registration.setSendTimeLimit(20000);
+    }
 }
