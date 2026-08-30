@@ -15,7 +15,7 @@ import java.util.List;
 public interface OfflineMessageRepository extends JpaRepository<OfflineMessage, Long> {
     List<OfflineMessage> findByRecipientUsernameAndRoomIdOrderByTimestampAsc(String recipientUsername, String roomId);
 
-    // 🟢 ADD THIS METHOD FOR THE INBOX SYNC
+    // For fetching all missed messages on app launch
     List<OfflineMessage> findByRecipientUsernameOrderByTimestampAsc(String recipientUsername);
 
     @Transactional
