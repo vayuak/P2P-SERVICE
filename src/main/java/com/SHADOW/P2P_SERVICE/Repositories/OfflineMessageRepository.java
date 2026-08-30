@@ -13,8 +13,10 @@ import java.util.List;
 
 @Repository
 public interface OfflineMessageRepository extends JpaRepository<OfflineMessage, Long> {
-
     List<OfflineMessage> findByRecipientUsernameAndRoomIdOrderByTimestampAsc(String recipientUsername, String roomId);
+
+    // 🟢 ADD THIS METHOD FOR THE INBOX SYNC
+    List<OfflineMessage> findByRecipientUsernameOrderByTimestampAsc(String recipientUsername);
 
     @Transactional
     void deleteByRecipientUsername(String recipientUsername);
@@ -24,8 +26,6 @@ public interface OfflineMessageRepository extends JpaRepository<OfflineMessage, 
     @Query("DELETE FROM OfflineMessage o WHERE o.timestamp < :expiryDate")
     int deleteExpiredMessages(@Param("expiryDate") LocalDateTime expiryDate);
 
-    // Delete by explicit id set, so the flusher can remove only what it has
-    // actually handed to the broker.
     @Modifying
     @Transactional
     @Query("DELETE FROM OfflineMessage o WHERE o.id IN :ids")

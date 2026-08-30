@@ -31,7 +31,9 @@ public class P2PChatController {
             return;
         }
 
-        // Trust authenticated principal only
+        // Trust the authenticated principal, never the client-supplied sender.
+        // Previously a client could set senderUsername to anyone and the relay
+        // would route and store it as that user.
         String senderUsername = principal.getName().trim().toLowerCase();
 
         if (payload.getRoomId() == null || payload.getRoomId().isBlank()) {
@@ -39,9 +41,11 @@ public class P2PChatController {
             return;
         }
 
+        // Normalize in exactly one place so the live path and the mailbox path
+        // can never disagree about the room key.
         String roomId = payload.getRoomId().trim().toLowerCase();
-        String targetUsername = resolveTarget(payload, roomId, senderUsername);
 
+        String targetUsername = resolveTarget(payload, roomId, senderUsername);
         if (targetUsername == null) {
             log.warn("Could not resolve recipient for room {} (sender {}). Dropping.", roomId, senderUsername);
             return;
@@ -60,10 +64,11 @@ public class P2PChatController {
         boolean isTargetOnline = userRegistry.getUser(targetUsername) != null;
 
         if (isTargetOnline) {
-            log.info("Relaying packet for room {} to online recipient {}", roomId, targetUsername);
+            log.info("Relaying AEAD packet for room {} (recipient online)", roomId);
             messagingTemplate.convertAndSend(destination, payload);
         } else {
-            log.info("Recipient {} offline. Vaulting payload to encrypted mailbox.", targetUsername);
+            log.info("Recipient {} offline. Vaulting to encrypted mailbox.", targetUsername);
+
             OfflineMessage offlineMsg = new OfflineMessage();
             offlineMsg.setSenderUsername(senderUsername);
             offlineMsg.setRecipientUsername(targetUsername);
@@ -78,6 +83,20 @@ public class P2PChatController {
         }
     }
 
+    /**
+     * Resolve the recipient.
+     *
+     * THE BUG THIS FIXES: the old extractTargetUsername split roomId on '_' and
+     * assumed exactly two segments. For sender "john_doe" in room
+     * "john_doe_jane", parts[0] is "john" and parts[1] is "doe", neither
+     * matches, and it returned the literal "UNKNOWN". The message was then
+     * vaulted for a recipient named UNKNOWN who will never subscribe: a silent,
+     * permanent black hole.
+     *
+     * The client now sends targetUsername explicitly. Parsing remains only as a
+     * fallback for older clients, and now strips the sender as a whole
+     * underscore-delimited run rather than assuming two segments.
+     */
     private String resolveTarget(FortressPayload payload, String roomId, String senderUsername) {
         String supplied = payload.getTargetUsername();
         if (supplied != null && !supplied.isBlank()) {
@@ -87,6 +106,7 @@ public class P2PChatController {
             }
         }
 
+        // Fallback: remove the sender's run from the room id.
         if (roomId.startsWith(senderUsername + "_")) {
             String rest = roomId.substring(senderUsername.length() + 1);
             return rest.isBlank() ? null : rest;
@@ -120,4 +140,5 @@ public class P2PChatController {
         private String iv;
         private String authTag;
     }
+
 }
