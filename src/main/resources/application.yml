@@ -21,13 +21,14 @@ spring:
     show-sql: false
 
 # ========================================================
-# 🛡️ SECURITY TOKENS (PREVENTS WEBSOCKET CRASHES)
+# 🛡️ SECURITY TOKENS (STRICT FAIL-FAST MAPPING)
 # ========================================================
 ghost:
   shield:
-    jwt-secret: ${JWT_SECRET:SuperSecurePermanentSecretKeyThatIsAtLeast64BytesLongForSecurityGuarantees}
-
-GATEWAY_SECRET: ${GATEWAY_SECRET:CryptographicGhostShieldInternalTokenSignature7350_465}
+    key: ${GHOST_SHIELD_KEY}
+    jwt-secret: ${GHOST_SHIELD_JWT_SECRET}
+  gateway:
+    secret: ${GHOST_GATEWAY_SECRET}
 
 # ========================================================
 # 🗺️ SERVICE REGISTRY (DISABLED)
