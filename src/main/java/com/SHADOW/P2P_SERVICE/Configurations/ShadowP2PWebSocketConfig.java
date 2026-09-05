@@ -78,7 +78,6 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                         throw new IllegalArgumentException("Invalid Token");
                     }
                 }
-
                 if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
                     Principal user = accessor.getUser();
                     String destination = accessor.getDestination();
@@ -87,11 +86,22 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                         throw new IllegalArgumentException("Unauthenticated subscribe");
                     }
 
-                    if (destination != null && destination.startsWith("/topic/shadow-")) {
-                        String roomId = destination.substring("/topic/shadow-".length());
-                        if (!roomContainsUser(roomId, user.getName())) {
-                            log.warn("Rejected subscribe by {} to foreign room {}", user.getName(), roomId);
-                            throw new IllegalArgumentException("Not a participant in this room");
+                    if (destination != null) {
+                        // 🟢 NEW: Allow users to subscribe to their own personal inbox
+                        if (destination.startsWith("/topic/shadow-user-")) {
+                            String targetInbox = destination.substring("/topic/shadow-user-".length());
+                            if (!targetInbox.equals(user.getName())) {
+                                log.warn("Rejected personal inbox subscribe by {} to {}", user.getName(), targetInbox);
+                                throw new IllegalArgumentException("Cannot subscribe to another user's inbox");
+                            }
+                        }
+                        // Keep legacy room support just in case
+                        else if (destination.startsWith("/topic/shadow-")) {
+                            String roomId = destination.substring("/topic/shadow-".length());
+                            if (!roomContainsUser(roomId, user.getName())) {
+                                log.warn("Rejected subscribe by {} to foreign room {}", user.getName(), roomId);
+                                throw new IllegalArgumentException("Not a participant in this room");
+                            }
                         }
                     }
                 }

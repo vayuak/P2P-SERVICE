@@ -60,7 +60,7 @@ public class P2PChatController {
         payload.setSenderUsername(senderUsername);
         payload.setTargetUsername(targetUsername);
 
-        String destination = "/topic/shadow-" + roomId;
+        String destination = "/topic/shadow-user-" + targetUsername;
         boolean isTargetOnline = userRegistry.getUser(targetUsername) != null;
 
         if (isTargetOnline) {
