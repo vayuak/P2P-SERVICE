@@ -16,14 +16,17 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final ShieldHandshakeFilter shieldHandshakeFilter;
+    private final JwtHttpFilter jwtHttpFilter;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // Intercept and isolate non-gateway requests before mapping WebSockets
+                // 1. Enforce Gateway isolation headers
                 .addFilterBefore(shieldHandshakeFilter, UsernamePasswordAuthenticationFilter.class)
+                // 2. 🟢 FIXED: Parse HTTP Bearer tokens to set Principal for REST requests (/v1/p2p/sync)
+                .addFilterBefore(jwtHttpFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .anyRequest().permitAll()
                 );

@@ -10,45 +10,6 @@ import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import java.security.Principal;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-
-/**
- * Per-user WebSocket connection limiter.
- *
- * WHAT WAS BROKEN BEFORE
- * ----------------------
- * The previous version was a ChannelInterceptor on the inbound channel that:
- *
- *   1. Read the connection owner from a custom native header "userId". The
- *      client never sent that header, so it was always null and the per-user
- *      limit was skipped entirely.
- *   2. Read the client IP from "X-Forwarded-For", which is an HTTP header and
- *      is not present on a STOMP frame. It therefore fell through to the
- *      literal string "UNKNOWN_IP", putting EVERY user on the platform into
- *      one shared bucket capped at 50.
- *   3. Decremented only on an explicit STOMP DISCONNECT frame, read from the
- *      same absent headers. Mobile clients that background, lose signal, or
- *      are killed never send DISCONNECT, so the counter only ever went up.
- *
- * Net effect: after 50 cumulative connections since the last deploy, across
- * all users for all time, every new connection was rejected with
- * "IP rate limit exceeded." until the service restarted.
- *
- * WHAT CHANGED
- * ------------
- * Counting now happens on SessionConnectedEvent / SessionDisconnectEvent.
- * Spring fires the disconnect event for ANY session teardown, including
- * abrupt socket loss, so the counter is self-healing. Identity comes from the
- * authenticated Principal that ShadowP2PWebSocketConfig already sets from the
- * verified JWT, which cannot be spoofed by a client header.
- *
- * The IP bucket is gone. It could not work: the STOMP layer has no access to
- * the originating IP, and the placeholder value made it actively harmful.
- * Enforce IP limits at the ingress/proxy layer instead, where the real client
- * address is available.
- *
- * Note this is per-instance state. That is fine while you run a single
- * replica, which you must for the in-memory simple broker anyway.
- */
 @Component
 @Slf4j
 public class WebSocketSecurityConfig {
