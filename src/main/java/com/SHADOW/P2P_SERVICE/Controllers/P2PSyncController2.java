@@ -4,9 +4,7 @@ import com.SHADOW.P2P_SERVICE.Models.OfflineMessage;
 import com.SHADOW.P2P_SERVICE.Repositories.OfflineMessageRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*; // 🟢 Updated to include all annotations
 
 import java.security.Principal;
 import java.util.ArrayList;
@@ -26,7 +24,6 @@ public class P2PSyncController2 {
         String username = principal.getName().trim().toLowerCase();
 
         // Fetch all vaulted messages for this user across ALL rooms
-        // Note: You must add findByRecipientUsernameOrderByTimestampAsc to your repository
         List<OfflineMessage> pending = offlineRepo.findByRecipientUsernameOrderByTimestampAsc(username);
 
         if (pending.isEmpty()) {
@@ -47,9 +44,24 @@ public class P2PSyncController2 {
             payloads.add(payload);
         }
 
-        // Delete them from the vault so they aren't downloaded twice
-        offlineRepo.deleteAll(pending);
+        // 🟢 REMOVED: offlineRepo.deleteAll(pending);
+        // Messages stay in the vault until the client explicitly acknowledges them
 
         return ResponseEntity.ok(payloads);
+    }
+
+    // 🟢 NEW: The Acknowledgment Endpoint
+    @PostMapping("/sync/ack")
+    public ResponseEntity<?> acknowledgeSync(@RequestBody List<String> msgIds, Principal principal) {
+        if (principal == null || msgIds == null || msgIds.isEmpty()) {
+            return ResponseEntity.badRequest().build();
+        }
+
+        String username = principal.getName().trim().toLowerCase();
+
+        // Safely shred only the messages the client confirmed they saved to their phone
+        offlineRepo.deleteByRecipientUsernameAndMsgIdIn(username, msgIds);
+
+        return ResponseEntity.ok().build();
     }
 }

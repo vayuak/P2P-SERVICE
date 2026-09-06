@@ -30,4 +30,10 @@ public interface OfflineMessageRepository extends JpaRepository<OfflineMessage, 
     @Transactional
     @Query("DELETE FROM OfflineMessage o WHERE o.id IN :ids")
     int deleteByIdIn(@Param("ids") List<Long> ids);
+
+    // 🟢 NEW: Safely deletes only acknowledged messages for a specific user
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM OfflineMessage o WHERE o.recipientUsername = :username AND o.msgId IN :msgIds")
+    void deleteByRecipientUsernameAndMsgIdIn(@Param("username") String username, @Param("msgIds") List<String> msgIds);
 }
