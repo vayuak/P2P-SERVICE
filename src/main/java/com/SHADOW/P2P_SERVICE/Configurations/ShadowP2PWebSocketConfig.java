@@ -14,6 +14,8 @@ import org.springframework.messaging.simp.stomp.StompCommand;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
 import org.springframework.messaging.support.ChannelInterceptor;
 import org.springframework.messaging.support.MessageHeaderAccessor;
+import org.springframework.scheduling.TaskScheduler;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 import org.springframework.web.socket.config.annotation.*;
 import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
@@ -38,7 +40,11 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
 
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {
-        registry.enableSimpleBroker("/queue", "/topic");
+        // ⚡ 2G/3G FIX: Force a 20-second heartbeat to keep cellular connections alive
+        registry.enableSimpleBroker("/queue", "/topic")
+                .setHeartbeatValue(new long[]{20000, 20000})
+                .setTaskScheduler(wsHeartbeatScheduler());
+
         registry.setApplicationDestinationPrefixes("/app");
         registry.setUserDestinationPrefix("/user");
     }
@@ -144,5 +150,14 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
         container.setMaxTextMessageBufferSize(2 * 1024 * 1024);
         container.setMaxBinaryMessageBufferSize(2 * 1024 * 1024);
         return container;
+    }
+    // ⚡ Dedicated thread pool just for keeping WebSockets alive
+    @Bean
+    public TaskScheduler wsHeartbeatScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(2);
+        scheduler.setThreadNamePrefix("ws-heartbeat-");
+        scheduler.initialize();
+        return scheduler;
     }
 }

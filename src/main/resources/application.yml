@@ -1,6 +1,9 @@
 server:
   port: ${PORT:8096}
-
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/xml,text/plain
+    min-response-size: 1024
 spring:
   application:
     name: P2P-SERVICE
