@@ -86,11 +86,7 @@
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-openfeign</artifactId>
         </dependency>
-        <!-- 🟢 EUREKA CLIENT DEPENDENCY -->
-        <dependency>
-            <groupId>org.springframework.cloud</groupId>
-            <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
-        </dependency>
+
     </dependencies>
 
     <!-- 🟢 ADDED DEPENDENCY MANAGEMENT FOR SPRING CLOUD -->
