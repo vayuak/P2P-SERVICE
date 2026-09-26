@@ -23,9 +23,7 @@ public class SecurityConfig {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                // 1. Enforce Gateway isolation headers
                 .addFilterBefore(shieldHandshakeFilter, UsernamePasswordAuthenticationFilter.class)
-                // 2. 🟢 FIXED: Parse HTTP Bearer tokens to set Principal for REST requests (/v1/p2p/sync)
                 .addFilterBefore(jwtHttpFilter, UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .anyRequest().permitAll()

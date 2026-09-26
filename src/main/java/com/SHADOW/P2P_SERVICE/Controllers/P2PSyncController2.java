@@ -3,65 +3,96 @@ package com.SHADOW.P2P_SERVICE.Controllers;
 import com.SHADOW.P2P_SERVICE.Models.OfflineMessage;
 import com.SHADOW.P2P_SERVICE.Repositories.OfflineMessageRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*; // 🟢 Updated to include all annotations
+import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/v1/p2p")
 @RequiredArgsConstructor
+@Slf4j
 public class P2PSyncController2 {
+
+    private static final int MAX_SYNC_BATCH = 300;
 
     private final OfflineMessageRepository offlineRepo;
 
+    private String resolveCaller(String headerUser, Principal principal) {
+        if (headerUser != null && !headerUser.isBlank()) {
+            return headerUser.trim().toLowerCase();
+        }
+        if (principal != null && principal.getName() != null) {
+            return principal.getName().trim().toLowerCase();
+        }
+        return null;
+    }
+
     @GetMapping("/sync")
-    public ResponseEntity<List<P2PChatController.FortressPayload>> syncInbox(Principal principal) {
-        if (principal == null) return ResponseEntity.status(401).build();
+    public ResponseEntity<?> syncInbox(
+            @RequestHeader(value = "X-Auth-Username", required = false) String headerUser,
+            Principal principal) {
 
-        String username = principal.getName().trim().toLowerCase();
+        String username = resolveCaller(headerUser, principal);
+        if (username == null) {
+            log.warn("Sync rejected: could not identify caller. Verify gateway is forwarding X-Auth-Username.");
+            return ResponseEntity.status(401).body(Map.of("error", "UNAUTHENTICATED"));
+        }
 
-        // Fetch all vaulted messages for this user across ALL rooms
         List<OfflineMessage> pending = offlineRepo.findByRecipientUsernameOrderByTimestampAsc(username);
-
         if (pending.isEmpty()) {
             return ResponseEntity.ok(new ArrayList<>());
         }
 
-        List<P2PChatController.FortressPayload> payloads = new ArrayList<>();
-        for (OfflineMessage msg : pending) {
-            P2PChatController.FortressPayload payload = new P2PChatController.FortressPayload();
-            payload.setMsgId(msg.getMsgId() != null ? msg.getMsgId() : "offline_" + msg.getId());
-            payload.setRoomId(msg.getRoomId());
-            payload.setSenderUsername(msg.getSenderUsername());
-            payload.setTargetUsername(msg.getRecipientUsername());
-            payload.setCiphertext(msg.getEncryptedPayload());
-            payload.setIv(msg.getIv());
-            payload.setAuthTag(msg.getAuthTag());
-            payload.setEphemeralPublicKey(msg.getEphemeralPublicKey());
-            payloads.add(payload);
+        if (pending.size() > MAX_SYNC_BATCH) {
+            pending = pending.subList(0, MAX_SYNC_BATCH);
         }
 
-        // 🟢 REMOVED: offlineRepo.deleteAll(pending);
-        // Messages stay in the vault until the client explicitly acknowledges them
+        List<P2PChatController.FortressPayload> payloads = new ArrayList<>();
+        for (OfflineMessage msg : pending) {
+            P2PChatController.FortressPayload p = new P2PChatController.FortressPayload();
 
+            p.setV(msg.getCryptoVersion() != null ? msg.getCryptoVersion() : 2);
+            p.setMsgId(msg.getMsgId() != null ? msg.getMsgId() : "offline_" + msg.getId());
+            p.setRoomId(msg.getRoomId());
+            p.setSenderUsername(msg.getSenderUsername());
+            p.setTargetUsername(msg.getRecipientUsername());
+            p.setCiphertext(msg.getEncryptedPayload());
+            p.setIv(msg.getIv());
+            p.setAuthTag(msg.getAuthTag());
+            p.setEphemeralPublicKey(msg.getEphemeralPublicKey());
+
+            p.setSentAt(msg.getSentAt() != null
+                    ? msg.getSentAt()
+                    : msg.getTimestamp().toString());
+
+            payloads.add(p);
+        }
+
+        log.info("Sync: handing {} vaulted messages to {}", payloads.size(), username);
         return ResponseEntity.ok(payloads);
     }
 
-    // 🟢 NEW: The Acknowledgment Endpoint
     @PostMapping("/sync/ack")
-    public ResponseEntity<?> acknowledgeSync(@RequestBody List<String> msgIds, Principal principal) {
-        if (principal == null || msgIds == null || msgIds.isEmpty()) {
-            return ResponseEntity.badRequest().build();
+    public ResponseEntity<?> acknowledgeSync(
+            @RequestBody List<String> msgIds,
+            @RequestHeader(value = "X-Auth-Username", required = false) String headerUser,
+            Principal principal) {
+
+        String username = resolveCaller(headerUser, principal);
+        if (username == null) {
+            return ResponseEntity.status(401).body(Map.of("error", "UNAUTHENTICATED"));
+        }
+        if (msgIds == null || msgIds.isEmpty()) {
+            return ResponseEntity.ok(Map.of("deleted", 0));
         }
 
-        String username = principal.getName().trim().toLowerCase();
-
-        // Safely shred only the messages the client confirmed they saved to their phone
-        offlineRepo.deleteByRecipientUsernameAndMsgIdIn(username, msgIds);
-
-        return ResponseEntity.ok().build();
+        int deleted = offlineRepo.deleteByRecipientUsernameAndMsgIdIn(username, msgIds);
+        log.info("Sync ack: shredded {} messages for {}", deleted, username);
+        return ResponseEntity.ok(Map.of("deleted", deleted));
     }
 }

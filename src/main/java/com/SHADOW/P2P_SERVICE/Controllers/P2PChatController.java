@@ -20,7 +20,6 @@ import java.security.Principal;
 public class P2PChatController {
 
     private final SimpMessagingTemplate messagingTemplate;
-    // Removed SimpUserRegistry because it fails to track custom STOMP JWT Principals
     private final OfflineMessageRepository offlineRepo;
 
     @MessageMapping("/shadow/send")
@@ -36,15 +35,18 @@ public class P2PChatController {
             log.warn("Rejected relay with no roomId from {}", senderUsername);
             return;
         }
+        if (payload.getCiphertext() == null || payload.getCiphertext().isBlank()) {
+            log.warn("Rejected relay with empty ciphertext from {}", senderUsername);
+            return;
+        }
 
         String roomId = payload.getRoomId().trim().toLowerCase();
-
         String targetUsername = resolveTarget(payload, roomId, senderUsername);
+
         if (targetUsername == null) {
             log.warn("Could not resolve recipient for room {} (sender {}). Dropping.", roomId, senderUsername);
             return;
         }
-
         if (!roomContainsUser(roomId, senderUsername)) {
             log.warn("Rejected relay: {} is not a participant in room {}", senderUsername, roomId);
             return;
@@ -53,33 +55,35 @@ public class P2PChatController {
         payload.setRoomId(roomId);
         payload.setSenderUsername(senderUsername);
         payload.setTargetUsername(targetUsername);
+        if (payload.getV() == null) payload.setV(2);
+        if (payload.getSentAt() == null || payload.getSentAt().isBlank()) {
+            payload.setSentAt(java.time.Instant.now().toString());
+        }
 
-        /*
-         * 1. ALWAYS VAULT (Store)
-         * We save the message to PostgreSQL immediately. If the user is offline,
-         * it waits for them to call /v1/p2p/sync.
-         */
-        log.info("Vaulting message from {} to {}", senderUsername, targetUsername);
-        OfflineMessage offlineMsg = new OfflineMessage();
-        offlineMsg.setSenderUsername(senderUsername);
-        offlineMsg.setRecipientUsername(targetUsername);
-        offlineMsg.setRoomId(roomId);
-        offlineMsg.setMsgId(payload.getMsgId());
-        offlineMsg.setEncryptedPayload(payload.getCiphertext());
-        offlineMsg.setIv(payload.getIv());
-        offlineMsg.setAuthTag(payload.getAuthTag());
-        offlineMsg.setEphemeralPublicKey(payload.getEphemeralPublicKey());
-        offlineRepo.save(offlineMsg);
+        OfflineMessage vaulted = new OfflineMessage();
+        vaulted.setSenderUsername(senderUsername);
+        vaulted.setRecipientUsername(targetUsername);
+        vaulted.setRoomId(roomId);
+        vaulted.setMsgId(payload.getMsgId());
+        vaulted.setEncryptedPayload(payload.getCiphertext());
+        vaulted.setIv(payload.getIv());
+        vaulted.setAuthTag(payload.getAuthTag());
+        vaulted.setEphemeralPublicKey(payload.getEphemeralPublicKey());
+        vaulted.setCryptoVersion(payload.getV());
+        vaulted.setSentAt(payload.getSentAt());
 
-        /*
-         * 2. ALWAYS RELAY (Forward)
-         * We blast the message down the target user's personal WebSocket inbox.
-         * If they are online, their GlobalNetworkManager receives it instantly.
-         * If they are offline, the STOMP broker safely ignores it.
-         */
+        try {
+            offlineRepo.save(vaulted);
+        } catch (Exception e) {
+            log.warn("Vault write failed for msgId {}: {}", payload.getMsgId(), e.getMessage());
+        }
+
         String destination = "/topic/shadow-user-" + targetUsername;
-        log.info("Relaying live AEAD packet to personal inbox: {}", destination);
-        messagingTemplate.convertAndSend(destination, payload);
+        try {
+            messagingTemplate.convertAndSend(destination, payload);
+        } catch (Exception e) {
+            log.warn("Live relay to {} failed, message remains vaulted: {}", destination, e.getMessage());
+        }
     }
 
     private String resolveTarget(FortressPayload payload, String roomId, String senderUsername) {
@@ -90,8 +94,6 @@ public class P2PChatController {
                 return target;
             }
         }
-
-        // Fallback: remove the sender's run from the room id.
         if (roomId.startsWith(senderUsername + "_")) {
             String rest = roomId.substring(senderUsername.length() + 1);
             return rest.isBlank() ? null : rest;
@@ -115,11 +117,13 @@ public class P2PChatController {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class FortressPayload {
+        private Integer v;
         private String roomId;
         private Long senderId;
         private String msgId;
         private String senderUsername;
         private String targetUsername;
+        private String sentAt;
         private String ephemeralPublicKey;
         private String ciphertext;
         private String iv;
