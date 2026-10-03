@@ -62,15 +62,26 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                         throw new IllegalArgumentException("Unauthorized connection attempt");
                     }
                     String token = authHeaders.get(0).substring(7);
+
                     try {
                         Claims claims = Jwts.parser()
                                 .verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
                                 .build()
                                 .parseSignedClaims(token)
                                 .getPayload();
-                        final String username = claims.getSubject().trim().toLowerCase();
+
+                        String username;
+                        if (claims.get("username") != null && !claims.get("username").toString().trim().isEmpty()) {
+                            username = claims.get("username").toString().trim().toLowerCase();
+                        } else if (claims.getSubject() != null && !claims.getSubject().trim().isEmpty() && !claims.getSubject().startsWith("user_")) {
+                            username = claims.getSubject().trim().toLowerCase();
+                        } else {
+                            username = claims.get("userId") != null ? "user_" + claims.get("userId").toString() : claims.getSubject();
+                        }
+
                         log.info("Secure STOMP session established for user: {}", username);
                         accessor.setUser(new StompPrincipal(username));
+
                     } catch (Exception e) {
                         log.error("STOMP connection dropped: invalid JWT.");
                         throw new IllegalArgumentException("Invalid Token");

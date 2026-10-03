@@ -26,7 +26,6 @@ public class JwtHttpFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
-
         String authHeader = request.getHeader("Authorization");
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
@@ -37,20 +36,25 @@ public class JwtHttpFilter extends OncePerRequestFilter {
                         .build()
                         .parseSignedClaims(token)
                         .getPayload();
-
-                String username = claims.getSubject().trim().toLowerCase();
+                String username;
+                if (claims.get("username") != null && !claims.get("username").toString().trim().isEmpty()) {
+                    username = claims.get("username").toString().trim().toLowerCase();
+                } else if (claims.getSubject() != null && !claims.getSubject().trim().isEmpty() && !claims.getSubject().startsWith("user_")) {
+                    username = claims.getSubject().trim().toLowerCase();
+                } else {
+                    username = claims.get("userId") != null ? "user_" + claims.get("userId").toString() : claims.getSubject();
+                }
 
                 // Populate Spring Security Context so Controller receives a valid Principal
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                         username, null, Collections.emptyList()
                 );
-
                 SecurityContextHolder.getContext().setAuthentication(auth);
+
             } catch (Exception e) {
                 // Invalid or expired JWT - leave context unauthenticated
             }
         }
-
         filterChain.doFilter(request, response);
     }
 }
