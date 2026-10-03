@@ -79,6 +79,7 @@ public class P2PChatController {
         }
 
         String destination = "/topic/shadow-user-" + targetUsername;
+        log.info("🚀 RELAY SUCCESS: Routing message from @{} to @{} in room {}", senderUsername, targetUsername, roomId);
         try {
             messagingTemplate.convertAndSend(destination, payload);
         } catch (Exception e) {
