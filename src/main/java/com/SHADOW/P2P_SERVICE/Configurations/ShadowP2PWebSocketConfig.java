@@ -70,6 +70,7 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                                 .parseSignedClaims(token)
                                 .getPayload();
 
+                        // 🟢 FIXED LOGIC: Synchronized with API Gateway to extract true username
                         String username;
                         if (claims.get("username") != null && !claims.get("username").toString().trim().isEmpty()) {
                             username = claims.get("username").toString().trim().toLowerCase();
@@ -87,12 +88,15 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                         throw new IllegalArgumentException("Invalid Token");
                     }
                 }
+
                 if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
                     Principal user = accessor.getUser();
                     String destination = accessor.getDestination();
+
                     if (user == null) {
                         throw new IllegalArgumentException("Unauthenticated subscribe");
                     }
+
                     if (destination != null) {
                         if (destination.startsWith("/topic/shadow-user-")) {
                             String targetInbox = destination.substring("/topic/shadow-user-".length());
@@ -119,6 +123,7 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
         if (roomId == null || username == null || username.isEmpty()) return false;
         String room = roomId.toLowerCase();
         String user = username.toLowerCase();
+
         if (room.equals(user)) return true;
         if (room.startsWith(user + "_")) return true;
         if (room.endsWith("_" + user)) return true;

@@ -26,16 +26,20 @@ public class JwtHttpFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+
         String authHeader = request.getHeader("Authorization");
 
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7).trim();
+
             try {
                 Claims claims = Jwts.parser()
                         .verifyWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
                         .build()
                         .parseSignedClaims(token)
                         .getPayload();
+
+                // 🟢 FIXED LOGIC: Synchronized with API Gateway to extract true username
                 String username;
                 if (claims.get("username") != null && !claims.get("username").toString().trim().isEmpty()) {
                     username = claims.get("username").toString().trim().toLowerCase();
@@ -55,6 +59,7 @@ public class JwtHttpFilter extends OncePerRequestFilter {
                 // Invalid or expired JWT - leave context unauthenticated
             }
         }
+
         filterChain.doFilter(request, response);
     }
 }

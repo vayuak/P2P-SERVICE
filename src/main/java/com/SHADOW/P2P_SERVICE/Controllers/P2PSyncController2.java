@@ -19,7 +19,6 @@ import java.util.Map;
 public class P2PSyncController2 {
 
     private static final int MAX_SYNC_BATCH = 300;
-
     private final OfflineMessageRepository offlineRepo;
 
     private String resolveCaller(String headerUser, Principal principal) {
@@ -34,12 +33,12 @@ public class P2PSyncController2 {
 
     @GetMapping("/sync")
     public ResponseEntity<?> syncInbox(
-            @RequestHeader(value = "X-Auth-Username", required = false) String headerUser,
+            @RequestHeader(value = "X-User-Id", required = false) String headerUser, // 🟢 FIXED: Matches Gateway Header
             Principal principal) {
 
         String username = resolveCaller(headerUser, principal);
         if (username == null) {
-            log.warn("Sync rejected: could not identify caller. Verify gateway is forwarding X-Auth-Username.");
+            log.warn("Sync rejected: could not identify caller. Verify gateway is forwarding X-User-Id.");
             return ResponseEntity.status(401).body(Map.of("error", "UNAUTHENTICATED"));
         }
 
@@ -47,7 +46,6 @@ public class P2PSyncController2 {
         if (pending.isEmpty()) {
             return ResponseEntity.ok(new ArrayList<>());
         }
-
         if (pending.size() > MAX_SYNC_BATCH) {
             pending = pending.subList(0, MAX_SYNC_BATCH);
         }
@@ -55,7 +53,6 @@ public class P2PSyncController2 {
         List<P2PChatController.FortressPayload> payloads = new ArrayList<>();
         for (OfflineMessage msg : pending) {
             P2PChatController.FortressPayload p = new P2PChatController.FortressPayload();
-
             p.setV(msg.getCryptoVersion() != null ? msg.getCryptoVersion() : 2);
             p.setMsgId(msg.getMsgId() != null ? msg.getMsgId() : "offline_" + msg.getId());
             p.setRoomId(msg.getRoomId());
@@ -65,11 +62,9 @@ public class P2PSyncController2 {
             p.setIv(msg.getIv());
             p.setAuthTag(msg.getAuthTag());
             p.setEphemeralPublicKey(msg.getEphemeralPublicKey());
-
             p.setSentAt(msg.getSentAt() != null
                     ? msg.getSentAt()
                     : msg.getTimestamp().toString());
-
             payloads.add(p);
         }
 
@@ -80,7 +75,7 @@ public class P2PSyncController2 {
     @PostMapping("/sync/ack")
     public ResponseEntity<?> acknowledgeSync(
             @RequestBody List<String> msgIds,
-            @RequestHeader(value = "X-Auth-Username", required = false) String headerUser,
+            @RequestHeader(value = "X-User-Id", required = false) String headerUser, // 🟢 FIXED: Matches Gateway Header
             Principal principal) {
 
         String username = resolveCaller(headerUser, principal);
