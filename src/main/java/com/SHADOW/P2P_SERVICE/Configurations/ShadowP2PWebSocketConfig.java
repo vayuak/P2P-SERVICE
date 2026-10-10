@@ -70,7 +70,6 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                                 .parseSignedClaims(token)
                                 .getPayload();
 
-                        // 🟢 FIXED LOGIC: Synchronized with API Gateway to extract true username
                         String username;
                         if (claims.get("username") != null && !claims.get("username").toString().trim().isEmpty()) {
                             username = claims.get("username").toString().trim().toLowerCase();
@@ -86,6 +85,12 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
                     } catch (Exception e) {
                         log.error("STOMP connection dropped: invalid JWT.");
                         throw new IllegalArgumentException("Invalid Token");
+                    }
+                }
+                if (StompCommand.SEND.equals(accessor.getCommand())) {
+                    String dest = accessor.getDestination();
+                    if (accessor.getUser() == null || dest == null || !dest.startsWith("/app/")) {
+                        throw new IllegalArgumentException("SEND only allowed to /app/**");
                     }
                 }
 
@@ -138,16 +143,16 @@ public class ShadowP2PWebSocketConfig implements WebSocketMessageBrokerConfigure
 
     @Override
     public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
-        registration.setMessageSizeLimit(1024 * 1024);
-        registration.setSendBufferSizeLimit(1024 * 1024);
+        registration.setMessageSizeLimit(5 * 1024 * 1024);
+        registration.setSendBufferSizeLimit(5 * 1024 * 1024);
         registration.setSendTimeLimit(20000);
     }
 
     @Bean
     public ServletServerContainerFactoryBean createWebSocketContainer() {
         ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
-        container.setMaxTextMessageBufferSize(2 * 1024 * 1024);
-        container.setMaxBinaryMessageBufferSize(2 * 1024 * 1024);
+        container.setMaxTextMessageBufferSize(5 * 1024 * 1024);
+        container.setMaxBinaryMessageBufferSize(5 * 1024 * 1024);
         return container;
     }
 

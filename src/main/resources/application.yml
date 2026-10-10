@@ -38,5 +38,7 @@ logging:
     root: INFO
     org.springframework.web.socket: DEBUG
     com.SHADOW.P2P_SERVICE: INFO
+    org.springframework.messaging: TRACE
+    org.springframework.web.socket.messaging: TRACE
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} : %msg%n"

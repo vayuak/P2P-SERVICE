@@ -20,13 +20,12 @@ public class P2PSyncController2 {
 
     private static final int MAX_SYNC_BATCH = 300;
     private final OfflineMessageRepository offlineRepo;
-
     private String resolveCaller(String headerUser, Principal principal) {
-        if (headerUser != null && !headerUser.isBlank()) {
-            return headerUser.trim().toLowerCase();
-        }
         if (principal != null && principal.getName() != null) {
             return principal.getName().trim().toLowerCase();
+        }
+        if (headerUser != null && !headerUser.isBlank()) {
+            return headerUser.trim().toLowerCase();
         }
         return null;
     }
