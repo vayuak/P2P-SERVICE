@@ -15,7 +15,6 @@ import java.security.Principal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.security.Principal;
 
 @Controller
 @Slf4j
@@ -24,13 +23,16 @@ public class P2PChatController {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final OfflineMessageRepository offlineRepo;
+
     @MessageMapping("/shadow/send")
     public void relayEncryptedMessage(@Payload FortressPayload payload, Principal principal) {
         if (principal == null) {
             log.warn("Rejected unauthenticated relay attempt.");
             return;
         }
+
         String senderUsername = principal.getName().trim().toLowerCase();
+
         if (payload.getRoomId() == null || payload.getRoomId().isBlank()) {
             log.warn("Rejected relay with no roomId from {}", senderUsername);
             reply(senderUsername, "NACK", payload.getMsgId(), "MISSING_ROOM_ID");
@@ -75,6 +77,7 @@ public class P2PChatController {
         vaulted.setEphemeralPublicKey(payload.getEphemeralPublicKey());
         vaulted.setCryptoVersion(payload.getV());
         vaulted.setSentAt(payload.getSentAt());
+
         boolean stored = false;
         try {
             offlineRepo.save(vaulted);
@@ -91,7 +94,7 @@ public class P2PChatController {
             log.warn("Live relay to {} failed, message remains vaulted: {}", destination, e.getMessage());
         }
 
-        // 🟢 FIX: Send the ACK (Sent tick) or NACK (Failed status) back to the sender
+        // 🟢 FIX: Send the ACK or NACK back to the sender so the 🕓 updates to ✓
         reply(senderUsername, stored ? "ACK" : "NACK", payload.getMsgId(), stored ? null : "STORE_FAILED");
     }
 
@@ -122,6 +125,32 @@ public class P2PChatController {
         return roomId.contains("_" + username + "_");
     }
 
+    private void reply(String user, String type, String msgId, String reason) {
+        if (user == null || msgId == null) return;
+        Map<String, String> m = new HashMap<>();
+        m.put("type", type);
+        m.put("msgId", msgId);
+        if (reason != null) m.put("reason", reason);
+        messagingTemplate.convertAndSend("/topic/shadow-user-" + user, m);
+    }
+
+    @MessageMapping("/shadow/receipt")
+    public void relayReceipt(@Payload ReceiptPayload r, Principal principal) {
+        if (principal == null || r.getMsgId() == null || r.getTargetUsername() == null) return;
+        String me = principal.getName().trim().toLowerCase();
+        String originalSender = r.getTargetUsername().trim().toLowerCase();
+        String status = "read".equals(r.getStatus()) ? "read" : "delivered";
+
+        offlineRepo.deleteByRecipientUsernameAndMsgIdIn(me, List.of(r.getMsgId()));
+
+        Map<String, String> m = new HashMap<>();
+        m.put("type", "RECEIPT");
+        m.put("msgId", r.getMsgId());
+        m.put("status", status);
+        m.put("from", me);
+        messagingTemplate.convertAndSend("/topic/shadow-user-" + originalSender, m);
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
@@ -138,31 +167,10 @@ public class P2PChatController {
         private String iv;
         private String authTag;
     }
-    private void reply(String user, String type, String msgId, String reason) {
-        if (user == null || msgId == null) return;
-        Map<String, String> m = new HashMap<>();
-        m.put("type", type);
-        m.put("msgId", msgId);
-        if (reason != null) m.put("reason", reason);
-        messagingTemplate.convertAndSend("/topic/shadow-user-" + user, m);
-    }
 
-    @MessageMapping("/shadow/receipt")
-    public void relayReceipt(@Payload ReceiptPayload r, Principal principal) {
-        if (principal == null || r.getMsgId() == null || r.getTargetUsername() == null) return;
-        String me = principal.getName().trim().toLowerCase();
-        String originalSender = r.getTargetUsername().trim().toLowerCase();
-        String status = "read".equals(r.getStatus()) ? "read" : "delivered";
-        offlineRepo.deleteByRecipientUsernameAndMsgIdIn(me, List.of(r.getMsgId()));
-        Map<String, String> m = new HashMap<>();
-        m.put("type", "RECEIPT");
-        m.put("msgId", r.getMsgId());
-        m.put("status", status);
-        m.put("from", me);
-        messagingTemplate.convertAndSend("/topic/shadow-user-" + originalSender, m);
-    }
-
-    @Data @NoArgsConstructor @AllArgsConstructor
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
     public static class ReceiptPayload {
         private String msgId;
         private String targetUsername;
