@@ -1,7 +1,9 @@
 package com.SHADOW.P2P_SERVICE.Controllers;
 
+import com.SHADOW.P2P_SERVICE.Clients.UserCatalogClient;
 import com.SHADOW.P2P_SERVICE.Models.OfflineMessage;
 import com.SHADOW.P2P_SERVICE.Repositories.OfflineMessageRepository;
+import com.SHADOW.P2P_SERVICE.Services.FirebasePushService;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -23,6 +25,8 @@ public class P2PChatController {
 
     private final SimpMessagingTemplate messagingTemplate;
     private final OfflineMessageRepository offlineRepo;
+    private final UserCatalogClient userCatalogClient;
+    private final FirebasePushService firebasePushService;
 
     @MessageMapping("/shadow/send")
     public void relayEncryptedMessage(@Payload FortressPayload payload, Principal principal) {
@@ -82,19 +86,24 @@ public class P2PChatController {
         try {
             offlineRepo.save(vaulted);
             stored = true;
+            String targetFcmToken = userCatalogClient.fetchTokenFromUserCatalog(targetUsername);
+            firebasePushService.wakeUpUser(
+                    targetFcmToken,
+                    "WarnPack",
+                    "🔒 You have a new encrypted message from @" + senderUsername
+            );
         } catch (Exception e) {
             log.warn("Vault write failed for msgId {}: {}", payload.getMsgId(), e.getMessage());
         }
 
         String destination = "/topic/shadow-user-" + targetUsername;
-        log.info("🚀 RELAY SUCCESS: Routing message from @{} to @{} in room {}", senderUsername, targetUsername, roomId);
+        log.debug("RELAY SUCCESS: Routing message from @{} to @{} in room {}", senderUsername, targetUsername, roomId);
         try {
             messagingTemplate.convertAndSend(destination, payload);
         } catch (Exception e) {
             log.warn("Live relay to {} failed, message remains vaulted: {}", destination, e.getMessage());
         }
 
-        // 🟢 FIX: Send the ACK or NACK back to the sender so the 🕓 updates to ✓
         reply(senderUsername, stored ? "ACK" : "NACK", payload.getMsgId(), stored ? null : "STORE_FAILED");
     }
 
@@ -166,6 +175,7 @@ public class P2PChatController {
         private String ciphertext;
         private String iv;
         private String authTag;
+        private String targetFcmToken;
     }
 
     @Data

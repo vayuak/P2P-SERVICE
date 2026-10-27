@@ -36,9 +36,9 @@ ghost:
 logging:
   level:
     root: INFO
-    org.springframework.web.socket: DEBUG
+    org.springframework.web.socket: WARN
     com.SHADOW.P2P_SERVICE: INFO
-    org.springframework.messaging: TRACE
-    org.springframework.web.socket.messaging: TRACE
+    org.springframework.messaging: WARN
+    org.springframework.web.socket.messaging: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} : %msg%n"
